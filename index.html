@@ -37,7 +37,7 @@ canvas {
 
 <div class="ui">
   <h1>PARTICLE MORPH</h1>
-  <p>4 Fingers = <b>DIP</b></p>
+  <p>1=Heart | 3=Flower | 4=DIP</p>
   <div id="status">Waiting...</div>
 </div>
 
@@ -85,10 +85,7 @@ function heartShape(cx, cy) {
       2 * Math.cos(3 * t) -
       Math.cos(4 * t);
 
-    pts.push({
-      x: cx + x * 10,
-      y: cy - y * 10
-    });
+    pts.push({ x: cx + x * 10, y: cy - y * 10 });
   }
   return pts;
 }
@@ -97,10 +94,7 @@ function flowerShape(cx, cy) {
   const pts = [];
   for (let a = 0; a < Math.PI * 2; a += 0.08) {
     const r = 140 * Math.sin(5 * a);
-    pts.push({
-      x: cx + r * Math.cos(a),
-      y: cy + r * Math.sin(a)
-    });
+    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
   }
   return pts;
 }
@@ -132,7 +126,7 @@ function textShape(text) {
   return pts;
 }
 
-// ================= APPLY EFFECT =================
+// ================= MORPH =================
 function morphTo(points) {
   particles = points.map(p => {
     const pt = new Particle(
@@ -141,6 +135,95 @@ function morphTo(points) {
     );
     pt.tx = p.x;
     pt.ty = p.y;
+    return pt;
+  });
+}
+
+// ================= FINGER COUNT (FIXED) =================
+function countFingers(lm, handType) {
+  let c = 0;
+
+  // Thumb
+  if (handType === "Right") {
+    if (lm[4].x < lm[3].x) c++;
+  } else {
+    if (lm[4].x > lm[3].x) c++;
+  }
+
+  // Other fingers
+  if (lm[8].y < lm[6].y) c++;
+  if (lm[12].y < lm[10].y) c++;
+  if (lm[16].y < lm[14].y) c++;
+  if (lm[20].y < lm[18].y) c++;
+
+  return c;
+}
+
+const statusText = document.getElementById("status");
+let lastGesture = -1;
+
+// ================= MEDIAPIPE =================
+const hands = new Hands({
+  locateFile: f =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(res => {
+  if (res.multiHandLandmarks && res.multiHandedness) {
+
+    const landmarks = res.multiHandLandmarks[0];
+    const handType = res.multiHandedness[0].label;
+    const count = countFingers(landmarks, handType);
+
+    statusText.innerText = `Fingers: ${count}`;
+
+    if (count !== lastGesture) {
+      lastGesture = count;
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+
+      if (count === 1) morphTo(heartShape(cx, cy));
+      else if (count === 3) morphTo(flowerShape(cx, cy));
+      else if (count === 4) morphTo(textShape("DIP"));
+      else if (count === 0) particles = [];
+    }
+
+  } else {
+    statusText.innerText = "No Hand Detected";
+  }
+});
+
+// ================= CAMERA =================
+const video = document.getElementById("video");
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+camera.start();
+
+// ================= LOOP =================
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(p => {
+    p.update();
+    p.draw();
+  });
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+
+</body>
+</html>    pt.ty = p.y;
     return pt;
   });
 }
