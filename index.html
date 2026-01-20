@@ -21,7 +21,6 @@ canvas {
   position: fixed;
   top: 20px;
   left: 20px;
-  max-width: 320px;
 }
 #status {
   margin-top: 10px;
@@ -38,7 +37,7 @@ canvas {
 
 <div class="ui">
   <h1>PARTICLE MORPH</h1>
-  <p>Added custom text <b>"DIP"</b> for 4 fingers.</p>
+  <p>4 Fingers = <b>DIP</b></p>
   <div id="status">Waiting...</div>
 </div>
 
@@ -47,19 +46,25 @@ canvas {
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-// -------- Particle System ----------
+// ================= CANVAS =================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// ================= PARTICLE =================
 class Particle {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.vx = (Math.random() - 0.5) * 3;
-    this.vy = (Math.random() - 0.5) * 3;
+    this.tx = x;
+    this.ty = y;
   }
   update() {
-    this.x += this.vx;
-    this.y += this.vy;
+    this.x += (this.tx - this.x) * 0.08;
+    this.y += (this.ty - this.y) * 0.08;
   }
-  draw(ctx) {
+  draw() {
     ctx.fillStyle = "#00ffff";
     ctx.beginPath();
     ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
@@ -67,28 +72,80 @@ class Particle {
   }
 }
 
-class ParticleSystem {
-  constructor() {
-    this.particles = [];
-  }
-  spawn(x, y, count = 120) {
-    this.particles = [];
-    for (let i = 0; i < count; i++) {
-      this.particles.push(new Particle(x, y));
-    }
-  }
-  draw(ctx) {
-    this.particles.forEach(p => {
-      p.update();
-      p.draw(ctx);
+let particles = [];
+
+// ================= SHAPES =================
+function heartShape(cx, cy) {
+  const pts = [];
+  for (let t = 0; t < Math.PI * 2; t += 0.05) {
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y =
+      13 * Math.cos(t) -
+      5 * Math.cos(2 * t) -
+      2 * Math.cos(3 * t) -
+      Math.cos(4 * t);
+
+    pts.push({
+      x: cx + x * 10,
+      y: cy - y * 10
     });
   }
-  collapse() {
-    this.particles = [];
-  }
+  return pts;
 }
 
-// -------- Finger Counter ----------
+function flowerShape(cx, cy) {
+  const pts = [];
+  for (let a = 0; a < Math.PI * 2; a += 0.08) {
+    const r = 140 * Math.sin(5 * a);
+    pts.push({
+      x: cx + r * Math.cos(a),
+      y: cy + r * Math.sin(a)
+    });
+  }
+  return pts;
+}
+
+function textShape(text) {
+  const off = document.createElement("canvas");
+  off.width = 400;
+  off.height = 200;
+  const octx = off.getContext("2d");
+
+  octx.fillStyle = "white";
+  octx.font = "bold 120px Arial";
+  octx.textAlign = "center";
+  octx.fillText(text, 200, 140);
+
+  const data = octx.getImageData(0, 0, 400, 200).data;
+  const pts = [];
+
+  for (let y = 0; y < 200; y += 4) {
+    for (let x = 0; x < 400; x += 4) {
+      if (data[(y * 400 + x) * 4 + 3] > 150) {
+        pts.push({
+          x: canvas.width / 2 - 200 + x,
+          y: canvas.height / 2 - 100 + y
+        });
+      }
+    }
+  }
+  return pts;
+}
+
+// ================= APPLY EFFECT =================
+function morphTo(points) {
+  particles = points.map(p => {
+    const pt = new Particle(
+      Math.random() * canvas.width,
+      Math.random() * canvas.height
+    );
+    pt.tx = p.x;
+    pt.ty = p.y;
+    return pt;
+  });
+}
+
+// ================= HAND =================
 function countFingers(lm) {
   let c = 0;
   if (lm[4].x < lm[3].x) c++;
@@ -99,48 +156,77 @@ function countFingers(lm) {
   return c;
 }
 
-// -------- Main ----------
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
 const statusText = document.getElementById("status");
+let lastGesture = -1;
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// ================= MEDIAPIPE =================
+const hands = new Hands({
+  locateFile: f =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
 
-const particles = new ParticleSystem();
-let currentEffect = -1;
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
 
-function applyEffect(count) {
-  if (count === currentEffect) return;
-  currentEffect = count;
+hands.onResults(res => {
+  if (res.multiHandLandmarks) {
+    const count = countFingers(res.multiHandLandmarks[0]);
 
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
+    if (count !== lastGesture) {
+      lastGesture = count;
 
-  switch (count) {
-    case 1:
-      statusText.innerText = "Heart";
-      particles.spawn(cx, cy);
-      break;
-    case 2:
-      statusText.innerText = "Saturn";
-      particles.spawn(cx, cy);
-      break;
-    case 3:
-      statusText.innerText = "Flower";
-      particles.spawn(cx, cy);
-      break;
-    case 4:
-      statusText.innerText = "DIP";
-      particles.spawn(cx, cy);
-      break;
-    case 5:
-      statusText.innerText = "Fireworks";
-      particles.spawn(cx, cy, 250);
-      break;
-    case 0:
-      statusText.innerText = "Collapse";
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+
+      if (count === 1) {
+        statusText.innerText = "Heart";
+        morphTo(heartShape(cx, cy));
+      }
+      else if (count === 3) {
+        statusText.innerText = "Flower";
+        morphTo(flowerShape(cx, cy));
+      }
+      else if (count === 4) {
+        statusText.innerText = "DIP";
+        morphTo(textShape("DIP"));
+      }
+      else if (count === 0) {
+        statusText.innerText = "Collapse";
+        particles = [];
+      }
+    }
+  } else {
+    statusText.innerText = "No Hand Detected";
+  }
+});
+
+// ================= CAMERA =================
+const camera = new Camera(document.getElementById("video"), {
+  onFrame: async () => {
+    await hands.send({ image: document.getElementById("video") });
+  },
+  width: 640,
+  height: 480
+});
+camera.start();
+
+// ================= LOOP =================
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(p => {
+    p.update();
+    p.draw();
+  });
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+
+</body>
+</html>      statusText.innerText = "Collapse";
       particles.collapse();
       break;
     default:
