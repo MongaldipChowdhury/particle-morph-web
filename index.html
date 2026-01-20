@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Particle Morph</title>
+
+<style>
+body {
+  margin: 0;
+  background: black;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  color: white;
+}
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+.ui {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  max-width: 320px;
+}
+#status {
+  margin-top: 10px;
+  color: #00ff88;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<div class="ui">
+  <h1>PARTICLE MORPH</h1>
+  <p>Added custom text <b>"DIP"</b> for 4 fingers.</p>
+  <div id="status">Waiting...</div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+// -------- Particle System ----------
+class Particle {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 3;
+    this.vy = (Math.random() - 0.5) * 3;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+  }
+  draw(ctx) {
+    ctx.fillStyle = "#00ffff";
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+class ParticleSystem {
+  constructor() {
+    this.particles = [];
+  }
+  spawn(x, y, count = 120) {
+    this.particles = [];
+    for (let i = 0; i < count; i++) {
+      this.particles.push(new Particle(x, y));
+    }
+  }
+  draw(ctx) {
+    this.particles.forEach(p => {
+      p.update();
+      p.draw(ctx);
+    });
+  }
+  collapse() {
+    this.particles = [];
+  }
+}
+
+// -------- Finger Counter ----------
+function countFingers(lm) {
+  let c = 0;
+  if (lm[4].x < lm[3].x) c++;
+  if (lm[8].y < lm[6].y) c++;
+  if (lm[12].y < lm[10].y) c++;
+  if (lm[16].y < lm[14].y) c++;
+  if (lm[20].y < lm[18].y) c++;
+  return c;
+}
+
+// -------- Main ----------
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const statusText = document.getElementById("status");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const particles = new ParticleSystem();
+let currentEffect = -1;
+
+function applyEffect(count) {
+  if (count === currentEffect) return;
+  currentEffect = count;
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  switch (count) {
+    case 1:
+      statusText.innerText = "Heart";
+      particles.spawn(cx, cy);
+      break;
+    case 2:
+      statusText.innerText = "Saturn";
+      particles.spawn(cx, cy);
+      break;
+    case 3:
+      statusText.innerText = "Flower";
+      particles.spawn(cx, cy);
+      break;
+    case 4:
+      statusText.innerText = "DIP";
+      particles.spawn(cx, cy);
+      break;
+    case 5:
+      statusText.innerText = "Fireworks";
+      particles.spawn(cx, cy, 250);
+      break;
+    case 0:
+      statusText.innerText = "Collapse";
+      particles.collapse();
+      break;
+    default:
+      statusText.innerText = "Waiting...";
+  }
+}
+
+const hands = new Hands({
+  locateFile: f =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(res => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (res.multiHandLandmarks) {
+    const fingerCount = countFingers(res.multiHandLandmarks[0]);
+    applyEffect(fingerCount);
+  } else {
+    statusText.innerText = "No Hand Detected";
+  }
+
+  particles.draw(ctx);
+});
+
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+camera.start();
+</script>
+
+</body>
+</html>
