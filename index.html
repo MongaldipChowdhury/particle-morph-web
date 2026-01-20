@@ -1,1 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Particle Morph</title>
 
+<style>
+body {
+  margin: 0;
+  background: black;
+  overflow: hidden;
+  color: white;
+  font-family: Arial;
+}
+video {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: scaleX(-1);
+  opacity: 0.25;
+}
+canvas {
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+.ui {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+}
+#status {
+  color: #00ff88;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<div class="ui">
+  <h2>PARTICLE MORPH</h2>
+  <p>1 ❤️ | 3 🌸 | 4 DIP</p>
+  <div id="status">Waiting…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+// ================= CANVAS =================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+// ================= PARTICLE =================
+class Particle {
+  constructor(x, y) {
+    this.x = Math.random() * canvas.width;
+    this.y = Math.random() * canvas.height;
+    this.tx = x;
+    this.ty = y;
+  }
+  update() {
+    this.x += (this.tx - this.x) * 0.1;
+    this.y += (this.ty - this.y) * 0.1;
+  }
+  draw() {
+    ctx.fillStyle = "#00ffff";
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+let particles = [];
+
+// ================= SHAPES =================
+function heart(cx, cy) {
+  let pts = [];
+  for (let t = 0; t < Math.PI * 2; t += 0.05) {
+    let x = 16 * Math.pow(Math.sin(t), 3);
+    let y = 13 * Math.cos(t) - 5 * Math.cos(2*t)
+            - 2 * Math.cos(3*t) - Math.cos(4*t);
+    pts.push({x: cx + x * 10, y: cy - y * 10});
+  }
+  return pts;
+}
+
+function flower(cx, cy) {
+  let pts = [];
+  for (let a = 0; a < Math.PI * 2; a += 0.08) {
+    let r = 140 * Math.sin(5 * a);
+    pts.push({x: cx + r * Math.cos(a), y: cy + r * Math.sin(a)});
+  }
+  return pts;
+}
+
+function textShape(txt) {
+  const off = document.createElement("canvas");
+  off.width = 400;
+  off.height = 200;
+  const o = off.getContext("2d");
+  o.fillStyle = "white";
+  o.font = "bold 120px Arial";
+  o.textAlign = "center";
+  o.fillText(txt, 200, 140);
+
+  const d = o.getImageData(0,0,400,200).data;
+  let pts = [];
+  for (let y=0;y<200;y+=4) {
+    for (let x=0;x<400;x+=4) {
+      if (d[(y*400+x)*4+3] > 150) {
+        pts.push({
+          x: canvas.width/2 - 200 + x,
+          y: canvas.height/2 - 100 + y
+        });
+      }
+    }
+  }
+  return pts;
+}
+
+function morph(points) {
+  particles = points.map(p => new Particle(p.x, p.y));
+}
+
+// ================= FINGER COUNT (FIXED) =================
+function fingerCount(lm) {
+  let c = 0;
+
+  if (lm[8].y < lm[6].y) c++;
+  if (lm[12].y < lm[10].y) c++;
+  if (lm[16].y < lm[14].y) c++;
+  if (lm[20].y < lm[18].y) c++;
+
+  if (Math.abs(lm[4].x - lm[3].x) > 0.04) c++; // Thumb safe
+
+  return c;
+}
+
+// ================= MEDIAPIPE =================
+const status = document.getElementById("status");
+let last = -1;
+
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(r => {
+  if (!r.multiHandLandmarks) {
+    status.innerText = "No Hand Detected";
+    return;
+  }
+
+  const lm = r.multiHandLandmarks[0];
+  const count = fingerCount(lm);
+  status.innerText = "Fingers: " + count;
+
+  if (count !== last) {
+    last = count;
+    const cx = canvas.width/2;
+    const cy = canvas.height/2;
+
+    if (count === 1) morph(heart(cx,cy));
+    else if (count === 3) morph(flower(cx,cy));
+    else if (count === 4) morph(textShape("DIP"));
+    else particles = [];
+  }
+});
+
+// ================= CAMERA =================
+const video = document.getElementById("video");
+const cam = new Camera(video, {
+  onFrame: async () => await hands.send({image: video}),
+  width: 640,
+  height: 480
+});
+cam.start();
+
+// ================= LOOP =================
+function animate() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  particles.forEach(p => { p.update(); p.draw(); });
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
